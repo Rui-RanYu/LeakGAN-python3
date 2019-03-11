@@ -3,9 +3,11 @@ import  numpy as np
 from tensorflow.python.ops import tensor_array_ops, control_flow_ops
 
 class LeakGAN(object):
-    def __init__(self, sequence_length, num_classes, vocab_size,
-            emb_dim, dis_emb_dim,filter_sizes, num_filters,batch_size,hidden_dim, start_token,goal_out_size,
-                 goal_size,step_size,D_model,LSTMlayer_num=1, l2_reg_lambda=0.0,learning_rate=0.001):
+    def __init__(self, D_model,sequence_length=20, num_classes=2, vocab_size=5000,
+            emb_dim=32, dis_emb_dim=64,filter_sizes=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20],
+                 num_filters=[100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160],
+                 batch_size=64,hidden_dim=32, start_token=0,goal_out_size=1720,
+                 goal_size=16,step_size=4,LSTMlayer_num=1, l2_reg_lambda=0.0,learning_rate=0.001):
         self.sequence_length = sequence_length
         self.num_classes = num_classes
         self.vocab_size = vocab_size
