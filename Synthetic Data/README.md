@@ -1,8 +1,8 @@
 # LeakGAN
 
 ## Requirements: 
-* **Tensorflow r1.2.1**
-* Python 2.7
+* **Tensorflow 1.12.0**
+* Python 3
 * CUDA 7.5+ (For GPU)
 
 ## Introduction
