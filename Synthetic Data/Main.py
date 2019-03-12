@@ -97,14 +97,14 @@ def target_loss(sess, target_lstm, data_loader):
         nll.append(g_loss)
     return np.mean(nll)
 
-def pre_train_epoch(sess, trainable_model, data_loader):
+def pre_train_G_epoch(sess, trainable_model, data_loader):
     # Pre-train the generator using MLE for one epoch
     supervised_g_losses = []
     data_loader.reset_pointer()
 
     for it in range(data_loader.num_batch):
         batch = data_loader.next_batch()
-        _, g_loss,_,_ = trainable_model.pretrain_step(sess, batch,1.0)
+        _, g_loss,_,_ = trainable_model.pretrain_step(sess, batch, 1.0)
         supervised_g_losses.append(g_loss)
 
     return np.mean(supervised_g_losses)
@@ -215,10 +215,10 @@ def main():
                 print(model_path + '/' + FLAGS.model)
                 saver.restore(sess, model_path + '/' + FLAGS.model)
 
-                print('Start pre-training...')
-                log.write('pre-training...\n')
+                print('Start pre-training G...')
+                log.write('pre-training G...\n')
                 for epoch in range(PRE_EPOCH_NUM):
-                    loss = pre_train_epoch(sess, leakgan, gen_data_loader)
+                    loss = pre_train_G_epoch(sess, leakgan, gen_data_loader)
                     if epoch % 5 == 0:
                         generate_samples(sess, leakgan, BATCH_SIZE, generated_num, eval_file, 0)
                         likelihood_data_loader.create_batches(eval_file)
@@ -249,7 +249,8 @@ def main():
                                     discriminator.D_input_y: y_batch,
                                     discriminator.dropout_keep_prob: dis_dropout_keep_prob
                                 }
-                                D_loss,_ = sess.run([discriminator.D_loss,discriminator.D_train_op], feed)
+                                D_loss,_ = sess.run([discriminator.D_loss,
+                                                     discriminator.D_train_op], feed)
                                 # # print 'D_loss ', D_loss
                                 # buffer =  str(D_loss) + '\n'
                                 # log.write(buffer)
@@ -258,10 +259,10 @@ def main():
 
             # saver.save(sess, model_path + '/leakgan')
         #  pre-train generator
-                    print('Start pre-training...')
-                    log.write('pre-training...\n')
+                    print('Start pre-training G...')
+                    log.write('pre-training G...\n')
                     for epoch in range(int(PRE_EPOCH_NUM/10)):
-                        loss = pre_train_epoch(sess, leakgan, gen_data_loader)
+                        loss = pre_train_G_epoch(sess, leakgan, gen_data_loader)
                         if epoch % 5 == 0:
                             generate_samples(sess, leakgan, BATCH_SIZE, generated_num, eval_file,0)
                             likelihood_data_loader.create_batches(eval_file)
@@ -275,7 +276,7 @@ def main():
                             print("Groud-Truth:", test_loss)
                 saver.save(sess, model_path + '/leakgan_pre')
 
-    gencircle = 1
+    gen_circle = 1
     #
     print('#########################################################################')
     print('Start Adversarial Training...')
@@ -284,11 +285,14 @@ def main():
         # Train the generator for one step
         for it in range(1):
 
-            for gi in range(gencircle):
+            for gi in range(gen_circle):
                 samples = leakgan.generate(sess,1.0,1)
                 rewards = get_reward(leakgan, discriminator,sess, samples, 4, dis_dropout_keep_prob)
                 feed = {leakgan.x: samples, leakgan.reward: rewards,leakgan.drop_out:1.0}
-                _,_,g_loss,w_loss = sess.run([leakgan.manager_updates,leakgan.worker_updates,leakgan.goal_loss,leakgan.worker_loss], feed_dict=feed)
+                _,_,g_loss,w_loss = sess.run([leakgan.manager_updates,
+                                              leakgan.worker_updates,
+                                              leakgan.goal_loss,
+                                              leakgan.worker_loss], feed_dict=feed)
                 print('total_batch: ', total_batch, "  ",g_loss,"  ", w_loss)
 
         # Test
