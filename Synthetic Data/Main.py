@@ -16,7 +16,7 @@ import os
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('restore', False, 'Training or testing a model')
-flags.DEFINE_boolean('resD', False, 'Training or testing a D model')
+flags.DEFINE_boolean('restoreD', False, 'Training or testing a D model')
 flags.DEFINE_integer('length', 20, 'The length of toy data')
 flags.DEFINE_string('model', "", 'Model NAME')
 #########################################################################################
@@ -211,7 +211,7 @@ def main():
         else:
             saver.restore(sess, model)
     else:
-        if FLAGS.resD and model_path + '/' + FLAGS.model:
+        if FLAGS.restoreD and model_path + '/' + FLAGS.model:
                 print(model_path + '/' + FLAGS.model)
                 saver.restore(sess, model_path + '/' + FLAGS.model)
 
