@@ -155,7 +155,7 @@ def get_reward(model,dis, sess, input_x, rollout_num, dis_dropout_keep_prob):
         if i == 0:
             rewards.append(ypred)
         else:
-            rewards[model.sequence_length / model.step_size - 1] += ypred
+            rewards[int(model.sequence_length / model.step_size) - 1] += ypred
     rewards = rescale(np.array(rewards), rollout_num)
     rewards = np.transpose(np.array(rewards)) / (1.0 * rollout_num)  # batch_size x seq_length
     return rewards

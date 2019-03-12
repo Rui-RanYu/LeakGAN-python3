@@ -272,7 +272,7 @@ class LeakGAN(object):
                    h_t_Worker,\
                    input_x,\
                    h_t_manager,\
-                   tf.cond(((i)%step_size)>0,lambda:real_sub_goal,lambda :tf.constant(0.0,shape=[self.batch_size,self.goal_out_size])) ,\
+                   tf.cond(((i) % step_size) > 0, lambda:real_sub_goal,lambda :tf.constant(0.0,shape=[self.batch_size,self.goal_out_size])) ,\
                    tf.cond(((i) % step_size) > 0, lambda: real_goal, lambda: real_sub_goal),\
                    feature_array,\
                    real_goal_array,\
