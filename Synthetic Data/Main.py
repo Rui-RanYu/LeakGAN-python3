@@ -262,15 +262,21 @@ def main():
                     print('Start pre-training G...')
                     log.write('pre-training G...\n')
                     for epoch in range(int(PRE_EPOCH_NUM/10)):
+
                         loss = pre_train_G_epoch(sess, leakgan, gen_data_loader)
+
                         if epoch % 5 == 0:
+                            # Test
                             generate_samples(sess, leakgan, BATCH_SIZE, generated_num, eval_file,0)
+
                             likelihood_data_loader.create_batches(eval_file)
                             test_loss = target_loss(sess, target_lstm, likelihood_data_loader)
                             print('pre-train epoch ', epoch, 'test_loss ', test_loss)
                             buffer = 'epoch:\t'+ str(epoch) + '\tnll:\t' + str(test_loss) + '\n'
                             log.write(buffer)
+
                             generate_samples(sess, target_lstm, BATCH_SIZE, generated_num, eval_file, 0)
+
                             likelihood_data_loader.create_batches(eval_file)
                             test_loss = target_loss(sess, target_lstm, likelihood_data_loader)
                             print("Groud-Truth:", test_loss)
@@ -293,7 +299,7 @@ def main():
                                               leakgan.worker_updates,
                                               leakgan.goal_loss,
                                               leakgan.worker_loss], feed_dict=feed)
-                print('total_batch: ', total_batch, "  ",g_loss,"  ", w_loss)
+                print('total_batch: ', total_batch, "  ", g_loss, "  ", w_loss)
 
         # Test
         if total_batch % 5 == 0 or total_batch == TOTAL_BATCH - 1:
