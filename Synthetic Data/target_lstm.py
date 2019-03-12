@@ -44,6 +44,7 @@ class TARGET_LSTM(object):
             log_prob = tf.log(tf.nn.softmax(o_t))
             next_token = tf.cast(tf.reshape(tf.multinomial(log_prob, 1), [self.batch_size]), tf.int32)
             x_tp1 = tf.nn.embedding_lookup(self.g_embeddings, next_token)  # batch x emb_dim
+
             gen_o = gen_o.write(i, tf.reduce_sum(tf.multiply(tf.one_hot(next_token, self.num_emb, 1.0, 0.0),
                                                              tf.nn.softmax(o_t)), 1))  # [batch_size] , prob
             gen_x = gen_x.write(i, next_token)  # indices, batch_size
@@ -53,7 +54,10 @@ class TARGET_LSTM(object):
             cond=lambda i, _1, _2, _3, _4: i < self.sequence_length,
             body=_g_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
-                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token), self.h0, gen_o, gen_x)
+                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
+                       self.h0,
+                       gen_o,
+                       gen_x)
             )
 
         self.gen_x = self.gen_x.stack()  # seq_length x batch_size
@@ -80,7 +84,8 @@ class TARGET_LSTM(object):
             body=_pretrain_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
                        tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
-                       self.h0, g_predictions))
+                       self.h0,
+                       g_predictions))
 
         self.g_predictions = tf.transpose(
             self.g_predictions.stack(), perm=[1, 0, 2])  # batch_size x seq_length x vocab_size
