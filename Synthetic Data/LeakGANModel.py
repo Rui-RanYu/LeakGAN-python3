@@ -67,7 +67,7 @@ class LeakGAN(object):
             self.g_manager_recurrent_unit = self.create_Manager_recurrent_unit(self.manager_params)  # maps h_tm1 to h_t for generator
             self.g_manager_output_unit = self.create_Manager_output_unit(self.manager_params)  # maps h_t to o_t (output token logits)
             self.h0_manager = tf.zeros([self.batch_size, self.hidden_dim])
-            self.h0_manager = tf.stack([self.h0_manager, self.h0_manager])
+            self.h0_manager = tf.stack([self.h0_manager, self.h0_manager]) # [2,64,32]
 
             self.goal_init = tf.get_variable("goal_init",initializer=tf.truncated_normal([self.batch_size,self.goal_out_size], stddev=0.1))
             self.manager_params.extend([self.goal_init])
@@ -134,20 +134,26 @@ class LeakGAN(object):
                 gen_x = gen_x.write(i, next_token)  # indices, batch_size
             gen_o = gen_o.write(i, tf.reduce_sum(tf.multiply(tf.one_hot(next_token, self.vocab_size, 1.0, 0.0),
                                                              tf.nn.softmax(x_logits)), 1))  # [batch_size] , prob
-            return i+1,x_tp1,h_t_Worker,h_t_manager,gen_o,gen_x,goal,\
+            return i+1,\
+                   x_tp1,\
+                   h_t_Worker,\
+                   h_t_manager,\
+                   gen_o,\
+                   gen_x,\
+                   goal,\
                    tf.cond(((i+1)%step_size)>0,lambda:real_sub_goal,lambda :tf.constant(0.0,shape=[self.batch_size,self.goal_out_size]))\
                     ,tf.cond(((i+1)%step_size)>0,lambda :real_goal,lambda :real_sub_goal),step_size,gen_real_goal_array,gen_o_worker_array
 
-        _, _, _,_, self.gen_o, self.gen_x,_,_,_,_,self.gen_real_goal_array,self.gen_o_worker_array= control_flow_ops.while_loop(
+        _, _, _, _, self.gen_o, self.gen_x,_,_,_,_,self.gen_real_goal_array,self.gen_o_worker_array= control_flow_ops.while_loop(
             cond=lambda i, _1, _2, _3, _4,_5,_6,_7,_8,_9,_10,_11: i < self.sequence_length,
             body=_g_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
                        tf.nn.embedding_lookup(self.g_embeddings, self.start_token),self.h0_worker,self.h0_manager,
-                        gen_o, gen_x,goal,tf.zeros([self.batch_size,self.goal_out_size]),self.goal_init,step_size,gen_real_goal_array,gen_o_worker_array),parallel_iterations=1)
+                        gen_o, gen_x, goal, tf.zeros([self.batch_size,self.goal_out_size]),self.goal_init,step_size,gen_real_goal_array,gen_o_worker_array),parallel_iterations=1)
 
-        self.gen_x = self.gen_x.stack()  # seq_length x batch_size
+        self.gen_x = self.gen_x.stack()  # seq_length x batch_size # [?,64]
 
-        self.gen_x = tf.transpose(self.gen_x, perm=[1, 0])  # batch_size x seq_length
+        self.gen_x = tf.transpose(self.gen_x, perm=[1, 0])  # batch_size x seq_length # [64,?]
 
         self.gen_real_goal_array = self.gen_real_goal_array.stack()  # seq_length x batch_size x goal
 
@@ -155,13 +161,14 @@ class LeakGAN(object):
 
         self.gen_o_worker_array = self.gen_o_worker_array.stack()  # seq_length x batch_size* vocab*goal
 
-        self.gen_o_worker_array = tf.transpose(self.gen_o_worker_array, perm=[1, 0,2,3])  # batch_size x seq_length * vocab*goal
+        self.gen_o_worker_array = tf.transpose(self.gen_o_worker_array, perm=[1, 0,2,3])  # batch_size x seq_length * vocab*goal # [64,?,5000,16]
 
         sub_feature = tensor_array_ops.TensorArray(dtype=tf.float32, size=int(self.sequence_length/self.step_size),
                                                        dynamic_size=False, infer_shape=True, clear_after_read=False)
 
         all_sub_features = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
                                                    dynamic_size=False, infer_shape=True, clear_after_read=False)
+
         all_sub_goals = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
                                                    dynamic_size=False, infer_shape=True, clear_after_read=False)
 
@@ -229,10 +236,21 @@ class LeakGAN(object):
                    feature_array,real_goal_array,sub_feature,all_sub_features,all_sub_goals
 
         _, _, self.g_predictions, _,_,_,_,_, self.feature_array, self.real_goal_array,self.sub_feature,self.all_sub_features,self.all_sub_goals = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6,_7,_8,_9,_10,_11,_12: i < self.sequence_length+1,
+            cond=lambda i, _1, _2, _3, _4, _5, _6,_7,_8,_9,_10,_11,_12 : i < self.sequence_length+1,
             body=preTrain,
-            loop_vars=(tf.constant(0, dtype=tf.int32),tf.nn.embedding_lookup(self.g_embeddings, self.start_token),g_predictions,self.h0_worker,
-                      self.x, self.h0_manager, tf.zeros([self.batch_size, self.goal_out_size]),self.goal_init, feature_array,real_goal_array,sub_feature,all_sub_features,all_sub_goals),
+            loop_vars=(tf.constant(0, dtype=tf.int32),
+                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
+                       g_predictions,
+                       self.h0_worker,
+                       self.x,
+                       self.h0_manager,
+                       tf.zeros([self.batch_size, self.goal_out_size]),
+                       self.goal_init,
+                       feature_array,
+                       real_goal_array,
+                       sub_feature,
+                       all_sub_features,
+                       all_sub_goals),
             parallel_iterations=1)
 
         self.sub_feature = self.sub_feature.stack() # seq_length x batch_size x num_filter
@@ -397,8 +415,11 @@ class LeakGAN(object):
     def update_feature_function(self,D_model):
         self.FeatureExtractor_unit = D_model.FeatureExtractor_unit
 
-    def pretrain_step(self, sess, x,dropout_keep_prob):
-        outputs = sess.run([self.pretrain_worker_updates, self.pretrain_worker_loss,self.pretrain_manager_updates,self.pretrain_goal_loss],
+    def pretrain_step(self, sess, x, dropout_keep_prob):
+        outputs = sess.run([self.pretrain_worker_updates,
+                            self.pretrain_worker_loss,
+                            self.pretrain_manager_updates,
+                            self.pretrain_goal_loss],
                            feed_dict={self.x: x,self.drop_out:dropout_keep_prob})
         return outputs
 
@@ -485,7 +506,7 @@ class LeakGAN(object):
     def create_Manager_recurrent_unit(self, params):
         with tf.variable_scope('Manager'):
             # Weights and Bias for input and hidden tensor
-            self.Wi = tf.Variable(tf.random_normal([self.num_filters_total, self.hidden_dim], stddev=0.1))
+            self.Wi = tf.Variable(tf.random_normal([self.num_filters_total, self.hidden_dim], stddev=0.1)) # [1720,32]
             self.Ui = tf.Variable(tf.random_normal([self.hidden_dim, self.hidden_dim], stddev=0.1))
             self.bi = tf.Variable(tf.random_normal([self.hidden_dim], stddev=0.1))
 
@@ -545,7 +566,7 @@ class LeakGAN(object):
 
     def create_Manager_output_unit(self, params):
         with tf.variable_scope('Manager'):
-            self.Wo = tf.Variable(tf.random_normal([self.hidden_dim, self.goal_out_size], stddev=0.1))
+            self.Wo = tf.Variable(tf.random_normal([self.hidden_dim, self.goal_out_size], stddev=0.1)) # [32,1720]
             self.bo = tf.Variable(tf.random_normal([self.goal_out_size], stddev=0.1))
             params.extend([self.Wo, self.bo])
 
