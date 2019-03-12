@@ -135,7 +135,7 @@ def rescale( reward, rollout_num=1.0):
 def get_reward(model,dis, sess, input_x, rollout_num, dis_dropout_keep_prob):
     rewards = []
     for i in range(rollout_num):
-        for given_num in range(1, model.sequence_length / model.step_size):
+        for given_num in range(1, int(model.sequence_length / model.step_size)):
             real_given_num = given_num * model.step_size
             feed = {model.x: input_x, model.given_num: real_given_num, model.drop_out: 1.0}
             samples = sess.run(model.gen_for_reward, feed)
