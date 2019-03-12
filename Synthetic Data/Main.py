@@ -17,7 +17,7 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('restore', False, 'Training or testing a model')
 flags.DEFINE_boolean('restoreD', False, 'Training or testing a D model')
-flags.DEFINE_integer('length', 20, 'The length of toy data')
+flags.DEFINE_integer('length', 40, 'The length of toy data')
 flags.DEFINE_string('model', "", 'Model NAME')
 #########################################################################################
 #  Generator  Hyper-parameters
