@@ -442,13 +442,26 @@ class LeakGAN(object):
         i, x_t,_, gen_for_reward,h_worker, h_manager, self.last_goal_for_reward,self.real_goal_for_reward,given_num  = control_flow_ops.while_loop(
             cond=lambda i, _1, _2, _3,_4,_5,_6, _7,given_num: i < given_num+1,
             body=_g_recurrence_1,
-            loop_vars=(tf.constant(0, dtype=tf.int32),tf.nn.embedding_lookup(self.g_embeddings, self.start_token),self.x,gen_for_reward,
-                       self.h0_worker,self.h0_manager,tf.zeros([self.batch_size, self.goal_out_size]),self.goal_init,given_num),parallel_iterations=1)  ##input groud-truth
+            loop_vars=(tf.constant(0, dtype=tf.int32),
+                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
+                       self.x,
+                       gen_for_reward,
+                       self.h0_worker,
+                       self.h0_manager,
+                       tf.zeros([self.batch_size, self.goal_out_size]),
+                       self.goal_init,
+                       given_num),parallel_iterations=1)  ##input groud-truth
 
         _, _, gen_for_reward,_, _,_,_  = control_flow_ops.while_loop(
             cond=lambda i, _1, _2, _3, _4,_5,_6: i < self.sequence_length+1,
             body=_g_recurrence_2,
-            loop_vars=(i, x_t, gen_for_reward,h_worker, h_manager,self.last_goal_for_reward,self.real_goal_for_reward),parallel_iterations=1)   ## rollout by original policy
+            loop_vars=(i,
+                       x_t,
+                       gen_for_reward,
+                       h_worker,
+                       h_manager,
+                       self.last_goal_for_reward,
+                       self.real_goal_for_reward),parallel_iterations=1)   ## rollout by original policy
 
         gen_for_reward = gen_for_reward.stack()  # seq_length x batch_size
 
