@@ -90,6 +90,7 @@ class LeakGAN(object):
 
         feature_array = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length+1,
                                                      dynamic_size=False, infer_shape=True, clear_after_read=False)
+
         real_goal_array = tensor_array_ops.TensorArray(dtype=tf.float32, size=int(self.sequence_length/self.step_size),
                                                        dynamic_size=False, infer_shape=True, clear_after_read=False)
 
@@ -99,7 +100,18 @@ class LeakGAN(object):
         gen_o_worker_array = tensor_array_ops.TensorArray(dtype=tf.float32, size=int(self.sequence_length/self.step_size),
                                                        dynamic_size=False, infer_shape=True, clear_after_read=False)
 
-        def _g_recurrence(i, x_t,h_tm1,h_tm1_manager, gen_o, gen_x,goal,last_goal,real_goal,step_size,gen_real_goal_array,gen_o_worker_array):
+        def _g_recurrence(i,
+                          x_t,
+                          h_tm1,
+                          h_tm1_manager,
+                          gen_o,
+                          gen_x,
+                          goal,
+                          last_goal,
+                          real_goal,
+                          step_size,
+                          gen_real_goal_array,
+                          gen_o_worker_array):
             ## padding sentence by -1
             cur_sen = tf.cond(i > 0,lambda:tf.split(tf.concat([tf.transpose(gen_x.stack(), perm=[1, 0]),self.padding_array],1),[self.sequence_length,i],1)[0],lambda :self.padding_array)
             with tf.variable_scope(self.scope):
@@ -141,15 +153,27 @@ class LeakGAN(object):
                    gen_o,\
                    gen_x,\
                    goal,\
-                   tf.cond(((i+1)%step_size)>0,lambda:real_sub_goal,lambda :tf.constant(0.0,shape=[self.batch_size,self.goal_out_size]))\
-                    ,tf.cond(((i+1)%step_size)>0,lambda :real_goal,lambda :real_sub_goal),step_size,gen_real_goal_array,gen_o_worker_array
+                   tf.cond(((i+1)%step_size)>0, lambda:real_sub_goal, lambda:tf.constant(0.0,shape=[self.batch_size,self.goal_out_size])),\
+                   tf.cond(((i+1)%step_size)>0, lambda:real_goal, lambda:real_sub_goal),\
+                   step_size,\
+                   gen_real_goal_array,\
+                   gen_o_worker_array
 
-        _, _, _, _, self.gen_o, self.gen_x,_,_,_,_,self.gen_real_goal_array,self.gen_o_worker_array= control_flow_ops.while_loop(
+        _, _, _, _, self.gen_o,self.gen_x,_,_,_,_,self.gen_real_goal_array,self.gen_o_worker_array= control_flow_ops.while_loop(
             cond=lambda i, _1, _2, _3, _4,_5,_6,_7,_8,_9,_10,_11: i < self.sequence_length,
             body=_g_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
-                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token),self.h0_worker,self.h0_manager,
-                        gen_o, gen_x, goal, tf.zeros([self.batch_size,self.goal_out_size]),self.goal_init,step_size,gen_real_goal_array,gen_o_worker_array),parallel_iterations=1)
+                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
+                       self.h0_worker,
+                       self.h0_manager,
+                       gen_o,
+                       gen_x,
+                       goal,
+                       tf.zeros([self.batch_size,self.goal_out_size]),
+                       self.goal_init,
+                       step_size,
+                       gen_real_goal_array,
+                       gen_o_worker_array),parallel_iterations=1)
 
         self.gen_x = self.gen_x.stack()  # seq_length x batch_size # [?,64]
 
@@ -181,7 +205,19 @@ class LeakGAN(object):
         ta_emb_x = ta_emb_x.unstack(self.processed_x)
 
 
-        def preTrain(i,x_t,g_predictions,h_tm1,input_x,h_tm1_manager,last_goal,real_goal,feature_array,real_goal_array,sub_feature,all_sub_features,all_sub_goals):
+        def preTrain(i,
+                     x_t,
+                     g_predictions,
+                     h_tm1,
+                     input_x,
+                     h_tm1_manager,
+                     last_goal,
+                     real_goal,
+                     feature_array,
+                     real_goal_array,
+                     sub_feature,
+                     all_sub_features,
+                     all_sub_goals):
             ## padding sentence by -1
             cur_sen = tf.split(tf.concat([tf.split(input_x,[i,self.sequence_length-i],1)[0],self.padding_array],1),[self.sequence_length,i],1)[0]  #padding sentence
             with tf.variable_scope(self.scope):
@@ -230,10 +266,19 @@ class LeakGAN(object):
             x_tp1 = tf.cond(i>0,lambda :ta_emb_x.read(i-1),
                                 lambda :x_t)
 
-            return i+1, x_tp1, g_predictions, h_t_Worker, input_x, h_t_manager,\
+            return i+1,\
+                   x_tp1,\
+                   g_predictions,\
+                   h_t_Worker,\
+                   input_x,\
+                   h_t_manager,\
                    tf.cond(((i)%step_size)>0,lambda:real_sub_goal,lambda :tf.constant(0.0,shape=[self.batch_size,self.goal_out_size])) ,\
-                    tf.cond(((i) % step_size) > 0, lambda: real_goal, lambda: real_sub_goal),\
-                   feature_array,real_goal_array,sub_feature,all_sub_features,all_sub_goals
+                   tf.cond(((i) % step_size) > 0, lambda: real_goal, lambda: real_sub_goal),\
+                   feature_array,\
+                   real_goal_array,\
+                   sub_feature,\
+                   all_sub_features,\
+                   all_sub_goals
 
         _, _, self.g_predictions, _,_,_,_,_, self.feature_array, self.real_goal_array,self.sub_feature,self.all_sub_features,self.all_sub_goals = control_flow_ops.while_loop(
             cond=lambda i, _1, _2, _3, _4, _5, _6,_7,_8,_9,_10,_11,_12 : i < self.sequence_length+1,
@@ -415,7 +460,7 @@ class LeakGAN(object):
     def update_feature_function(self,D_model):
         self.FeatureExtractor_unit = D_model.FeatureExtractor_unit
 
-    def pretrain_step(self, sess, x, dropout_keep_prob):
+    def pretrain_G_step(self, sess, x, dropout_keep_prob):
         outputs = sess.run([self.pretrain_worker_updates,
                             self.pretrain_worker_loss,
                             self.pretrain_manager_updates,

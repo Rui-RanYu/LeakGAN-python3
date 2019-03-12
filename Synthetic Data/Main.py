@@ -104,7 +104,7 @@ def pre_train_G_epoch(sess, trainable_model, data_loader):
 
     for it in range(data_loader.num_batch):
         batch = data_loader.next_batch()
-        _, g_loss,_,_ = trainable_model.pretrain_step(sess, batch, 1.0)
+        _, g_loss,_,_ = trainable_model.pretrain_G_step(sess, batch, 1.0)
         supervised_g_losses.append(g_loss)
 
     return np.mean(supervised_g_losses)
