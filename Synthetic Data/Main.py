@@ -138,10 +138,10 @@ def get_reward(model,dis, sess, input_x, rollout_num, dis_dropout_keep_prob):
         for given_num in range(1, int(model.sequence_length / model.step_size)):
             real_given_num = given_num * model.step_size
             feed = {model.x: input_x, model.given_num: real_given_num, model.drop_out: 1.0}
-            samples = sess.run(model.gen_for_reward, feed)
-            # print samples.shape
+            samples = sess.run(model.gen_text_for_reward, feed) # G用rollout生成文本然后给D
+            # print samples.shape # [batch_size,seq_len] # [64,40]
             feed = {dis.D_input_x: samples, dis.dropout_keep_prob: 1.0}
-            ypred_for_auc = sess.run(dis.ypred_for_auc, feed)
+            ypred_for_auc = sess.run(dis.ypred_for_auc, feed) # G用rollout生成文本然后给D
             ypred = np.array([item[1] for item in ypred_for_auc])
             if i == 0:
                 rewards.append(ypred)
@@ -203,6 +203,7 @@ def main():
     saver = tf.train.Saver(saver_variables)
     model = tf.train.latest_checkpoint(model_path)
     print(model)
+    """
     if FLAGS.restoreAll and model:
         # model = tf.train.latest_checkpoint(model_path)
         # if model and FLAGS.restore:
@@ -282,7 +283,7 @@ def main():
                             test_loss = target_loss(sess, target_lstm, likelihood_data_loader)
                             print("Groud-Truth:(和上面的test_loss越接近越好)", test_loss)
                 saver.save(sess, model_path + '/leakgan_pre')
-
+    """
     gen_circle = 1
     #
     print('#########################################################################')

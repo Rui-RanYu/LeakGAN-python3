@@ -74,8 +74,8 @@ class LeakGAN(object):
 
         self.padding_array = tf.constant(-1, shape=[self.batch_size, self.sequence_length], dtype=tf.int32)
 
-        with tf.name_scope("roll_out"):
-            self.gen_for_reward = self.rollout(self.x,self.given_num)
+        with tf.name_scope("roll_out"): # x里given_num个token作为G的input生成40个token，再和整个长度为40的x比出loss
+            self.gen_text_for_reward = self.rollout(self.x, self.given_num) # [64,40] return [64,40]
 
         # processed for batch
         with tf.device("/cpu:0"):
@@ -369,20 +369,20 @@ class LeakGAN(object):
                 list(zip(self.worker_grad, self.worker_params)),global_step=global_step_adv)
 
     # rollout是蒙特卡洛的一个东西，好像就是随机
-    def rollout(self,input_x,given_num):
+    def rollout(self, input_x, given_num):
         with tf.device("/cpu:0"):
             processed_x = tf.transpose(tf.nn.embedding_lookup(self.g_embeddings,input_x),perm=[1, 0, 2])  # seq_length x batch_size x emb_dim
         ta_emb_x = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length)
         ta_emb_x = ta_emb_x.unstack(processed_x)
 
         # Next is rollout
-        gen_for_reward = tensor_array_ops.TensorArray(dtype=tf.int32, size=1, dynamic_size=True, infer_shape=True,clear_after_read=False)
+        gen_text_for_reward = tensor_array_ops.TensorArray(dtype=tf.int32, size=1, dynamic_size=True, infer_shape=True,clear_after_read=False)
         ta_x = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length)
         ta_x = ta_x.unstack(tf.transpose(input_x, perm=[1, 0]))
 
-        # When current index i < given_num, use the provided tokens as the input at each time step
+        # !!! When current index i < given_num, use the provided tokens as the input at each time step
         # 这个方法是rollout方法里的
-        def _g_recurrence_1(i, x_t,input_x,gen_x,h_tm1,h_tm1_manager,last_goal,real_goal,give_num):
+        def _g_recurrence_1(i, x_t, input_x, gen_x, h_tm1, h_tm1_manager, last_goal, real_goal, give_num):
 
             cur_sen = tf.split(tf.concat([tf.split(input_x, [i, self.sequence_length - i], 1)[0], self.padding_array], 1),[self.sequence_length, i], 1)[0]
             with tf.variable_scope(self.scope):
@@ -408,7 +408,7 @@ class LeakGAN(object):
                            lambda: tf.constant(0.0, shape=[self.batch_size, self.goal_out_size])), \
                    tf.cond(((i) % self.step_size) > 0, lambda: real_goal, lambda: real_sub_goal), give_num
 
-        # When current index i >= given_num, start roll-out, use the output as time step t as the input at time step t+1
+        # !!! When current index i >= given_num, start rollout, use the output at time step t as the input at time step t+1
         # 这个方法是rollout方法里的
         def _g_recurrence_2(i, x_t,gen_x,h_tm1,h_tm1_manager,last_goal,real_goal):
             # with tf.device('/cpu:0'):
@@ -445,35 +445,35 @@ class LeakGAN(object):
                                                 lambda: tf.constant(0.0, shape=[self.batch_size, self.goal_out_size])), \
                     tf.cond(((i) % self.step_size) > 0, lambda: real_goal, lambda: real_sub_goal)
 
-        i, x_t,_, gen_for_reward,h_worker, h_manager, self.last_goal_for_reward,self.real_goal_for_reward,given_num  = control_flow_ops.while_loop(
+        i, x_t,_, gen_text_for_reward,h_worker, h_manager, self.last_goal_for_reward,self.real_goal_for_reward,given_num  = control_flow_ops.while_loop(
             cond=lambda i, _1, _2, _3,_4,_5,_6, _7,given_num: i < given_num+1,
             body=_g_recurrence_1,
             loop_vars=(tf.constant(0, dtype=tf.int32),
                        tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
                        self.x,
-                       gen_for_reward,
+                       gen_text_for_reward,
                        self.h0_worker,
                        self.h0_manager,
                        tf.zeros([self.batch_size, self.goal_out_size]),
                        self.goal_init,
                        given_num),parallel_iterations=1)  ##input groud-truth
 
-        _, _, gen_for_reward,_, _,_,_  = control_flow_ops.while_loop(
+        _, _, gen_text_for_reward,_, _,_,_  = control_flow_ops.while_loop(
             cond=lambda i, _1, _2, _3, _4,_5,_6: i < self.sequence_length+1,
             body=_g_recurrence_2,
             loop_vars=(i,
                        x_t,
-                       gen_for_reward,
+                       gen_text_for_reward,
                        h_worker,
                        h_manager,
                        self.last_goal_for_reward,
                        self.real_goal_for_reward),parallel_iterations=1)   ## rollout by original policy
 
-        gen_for_reward = gen_for_reward.stack()  # seq_length x batch_size
+        gen_text_for_reward = gen_text_for_reward.stack()  # seq_length x batch_size
 
-        gen_for_reward = tf.transpose(gen_for_reward, perm=[1, 0])  # batch_size x seq_length
+        gen_text_for_reward = tf.transpose(gen_text_for_reward, perm=[1, 0])  # batch_size x seq_length
 
-        return gen_for_reward
+        return gen_text_for_reward
 
 
     def update_feature_function(self,D_model):
