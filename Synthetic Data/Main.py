@@ -235,7 +235,7 @@ def main():
                 saver.save(sess, model_path + '/leakgan_pre')
         else:
 
-                print('Start pre-training discriminator...')
+                print('Start pre-training D...')
                 # Train 3 epoch on the generated data and do this for 50 times
                 for i in range(10):
                     for _ in range(5):
