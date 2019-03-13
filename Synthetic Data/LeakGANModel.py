@@ -74,7 +74,9 @@ class LeakGAN(object):
 
         self.padding_array = tf.constant(-1, shape=[self.batch_size, self.sequence_length], dtype=tf.int32)
 
-        with tf.name_scope("roll_out"): # 用x里given_num个token作为G的input生成40个token，再和整个长度为40的x比出loss
+        with tf.name_scope("roll_out"):
+            # 用x里given_num个token作为G的input生成40个token，再和整个长度为40的x比出loss
+            # 用x里的也是要生成的，不是copy
             self.gen_text_for_reward = self.rollout(self.x, self.given_num) # [64,40] return [64,40]
 
         # processed for batch

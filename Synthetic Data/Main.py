@@ -203,7 +203,7 @@ def main():
     saver = tf.train.Saver(saver_variables)
     model = tf.train.latest_checkpoint(model_path)
     print(model)
-    """
+
     if FLAGS.restoreAll and model:
         # model = tf.train.latest_checkpoint(model_path)
         # if model and FLAGS.restore:
@@ -283,7 +283,7 @@ def main():
                             test_loss = target_loss(sess, target_lstm, likelihood_data_loader)
                             print("Groud-Truth:(和上面的test_loss越接近越好)", test_loss)
                 saver.save(sess, model_path + '/leakgan_pre')
-    """
+
     gen_circle = 1
     #
     print('#########################################################################')
