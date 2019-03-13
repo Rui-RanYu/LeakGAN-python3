@@ -74,7 +74,7 @@ class LeakGAN(object):
 
         self.padding_array = tf.constant(-1, shape=[self.batch_size, self.sequence_length], dtype=tf.int32)
 
-        with tf.name_scope("roll_out"): # x里given_num个token作为G的input生成40个token，再和整个长度为40的x比出loss
+        with tf.name_scope("roll_out"): # 用x里given_num个token作为G的input生成40个token，再和整个长度为40的x比出loss
             self.gen_text_for_reward = self.rollout(self.x, self.given_num) # [64,40] return [64,40]
 
         # processed for batch
@@ -380,13 +380,13 @@ class LeakGAN(object):
         ta_x = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length)
         ta_x = ta_x.unstack(tf.transpose(input_x, perm=[1, 0]))
 
-        # !!! When current index i < given_num, use the provided tokens as the input at each time step
+        # _g_recurrence_1的解释：When current index i < given_num, use the provided tokens as the input at each time step
         # 这个方法是rollout方法里的
-        def _g_recurrence_1(i, x_t, input_x, gen_x, h_tm1, h_tm1_manager, last_goal, real_goal, give_num):
+        def _g_recurrence_1(i,x_t,input_x,gen_x,h_tm1,h_tm1_manager,last_goal,real_goal,give_num):
 
-            cur_sen = tf.split(tf.concat([tf.split(input_x, [i, self.sequence_length - i], 1)[0], self.padding_array], 1),[self.sequence_length, i], 1)[0]
+            current_sentence = tf.split(tf.concat([tf.split(input_x, [i, self.sequence_length - i], 1)[0], self.padding_array], 1), [self.sequence_length, i], 1)[0]
             with tf.variable_scope(self.scope):
-                feature = self.FeatureExtractor_unit(cur_sen,self.drop_out)
+                feature = self.FeatureExtractor_unit(current_sentence, self.drop_out)
 
             h_t_manager = self.g_manager_recurrent_unit(feature, h_tm1_manager)
             sub_goal = self.g_manager_output_unit(h_t_manager)
@@ -401,20 +401,20 @@ class LeakGAN(object):
             x_tp1 = tf.cond(i > 0, lambda: ta_emb_x.read(i - 1), lambda: x_t)
 
             # hidden_memory_tuple
-            with tf.control_dependencies([cur_sen]):
+            with tf.control_dependencies([current_sentence]):
                 gen_x = tf.cond(i > 0, lambda :gen_x.write(i-1, ta_x.read(i-1)),lambda :gen_x)
             return i + 1, x_tp1,input_x,gen_x,h_t_Worker, h_t_manager, \
                    tf.cond(((i) % self.step_size) > 0, lambda: real_sub_goal,
                            lambda: tf.constant(0.0, shape=[self.batch_size, self.goal_out_size])), \
                    tf.cond(((i) % self.step_size) > 0, lambda: real_goal, lambda: real_sub_goal), give_num
 
-        # !!! When current index i >= given_num, start rollout, use the output at time step t as the input at time step t+1
+        # _g_recurrence_2的解释：When current index i >= given_num, start rollout, use the output at time step t as the input at time step t+1
         # 这个方法是rollout方法里的
-        def _g_recurrence_2(i, x_t,gen_x,h_tm1,h_tm1_manager,last_goal,real_goal):
+        def _g_recurrence_2(i,x_t,gen_x,h_tm1,h_tm1_manager,last_goal,real_goal):
             # with tf.device('/cpu:0'):
-            cur_sen = tf.cond(i > 0,lambda:tf.split(tf.concat([tf.transpose(gen_x.stack(), perm=[1, 0]),self.padding_array],1),[self.sequence_length,i-1],1)[0],lambda :self.padding_array)
+            current_sentence = tf.cond(i > 0,lambda:tf.split(tf.concat([tf.transpose(gen_x.stack(), perm=[1, 0]),self.padding_array],1),[self.sequence_length,i-1],1)[0],lambda :self.padding_array)
             with tf.variable_scope(self.scope):
-                feature = self.FeatureExtractor_unit(cur_sen,self.drop_out)
+                feature = self.FeatureExtractor_unit(current_sentence,self.drop_out)
             h_t_Worker = self.g_worker_recurrent_unit(x_t, h_tm1)  # hidden_memory_tuple
             o_t_Worker = self.g_worker_output_unit(h_t_Worker)  # batch x vocab , logits not prob
 
@@ -438,7 +438,7 @@ class LeakGAN(object):
             log_prob = tf.log(tf.nn.softmax(x_logits))
             next_token = tf.cast(tf.reshape(tf.multinomial(log_prob, 1), [self.batch_size]), tf.int32)
             x_tp1 = tf.nn.embedding_lookup(self.g_embeddings, next_token)  # batch x emb_dim
-            with tf.control_dependencies([cur_sen]):
+            with tf.control_dependencies([current_sentence]):
                 gen_x = gen_x.write(i-1, next_token)  # indices, batch_size
             return i + 1, x_tp1, gen_x,h_t_Worker,h_t_manager,\
                     tf.cond(((i) % self.step_size) > 0, lambda: real_sub_goal,
@@ -446,7 +446,7 @@ class LeakGAN(object):
                     tf.cond(((i) % self.step_size) > 0, lambda: real_goal, lambda: real_sub_goal)
 
         i, x_t,_, gen_text_for_reward,h_worker, h_manager, self.last_goal_for_reward,self.real_goal_for_reward,given_num  = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3,_4,_5,_6, _7,given_num: i < given_num+1,
+            cond=lambda i,_1,_2,_3,_4,_5,_6,_7,given_num: i < given_num+1,
             body=_g_recurrence_1,
             loop_vars=(tf.constant(0, dtype=tf.int32),
                        tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
