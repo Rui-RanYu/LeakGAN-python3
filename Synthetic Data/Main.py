@@ -15,7 +15,7 @@ import os
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_boolean('restore', False, 'Training or testing a model')
+flags.DEFINE_boolean('restoreAll', False, 'Training or testing a model')
 flags.DEFINE_boolean('restoreD', False, 'Training or testing a D model')
 flags.DEFINE_integer('length', 40, 'The length of toy data')
 flags.DEFINE_string('model', "", 'Model NAME')
@@ -173,6 +173,7 @@ def main():
     target_params = pickle.load(file,encoding='bytes')
     
     dis_data_loader = Dis_dataloader(BATCH_SIZE,SEQ_LENGTH)
+
     discriminator = Discriminator(SEQ_LENGTH,num_classes=2,vocab_size=vocab_size,dis_emb_dim=dis_embedding_dim,filter_sizes=dis_filter_sizes,num_filters=dis_num_filters,
                         batch_size=BATCH_SIZE,hidden_dim=HIDDEN_DIM,start_token=START_TOKEN,goal_out_size=GOAL_OUT_SIZE,step_size=4)
     leakgan = LeakGAN(sequence_length=SEQ_LENGTH,num_classes=2,vocab_size=vocab_size,emb_dim=EMB_DIM,
@@ -202,7 +203,7 @@ def main():
     saver = tf.train.Saver(saver_variables)
     model = tf.train.latest_checkpoint(model_path)
     print(model)
-    if FLAGS.restore and model:
+    if FLAGS.restoreAll and model:
         # model = tf.train.latest_checkpoint(model_path)
         # if model and FLAGS.restore:
         if model_path+'/' + FLAGS.model:
@@ -218,7 +219,7 @@ def main():
                 print('Start pre-training G...')
                 log.write('pre-training G...\n')
                 for epoch in range(PRE_EPOCH_NUM):
-                    loss = pre_train_G_epoch(sess, leakgan, gen_data_loader)
+                    loss = pre_train_G_epoch(sess, leakgan, gen_data_loader) # 利用了真实数据
                     if epoch % 5 == 0:
                         generate_samples(sess, leakgan, BATCH_SIZE, generated_num, eval_file, 0)
                         likelihood_data_loader.create_batches(eval_file)
@@ -226,15 +227,18 @@ def main():
                         print('pre-train epoch ', epoch, 'test_loss ', test_loss)
                         buffer = 'epoch:\t' + str(epoch) + '\tnll:\t' + str(test_loss) + '\n'
                         log.write(buffer)
+
                         generate_samples(sess, target_lstm, BATCH_SIZE, generated_num, eval_file, 0)
                         likelihood_data_loader.create_batches(eval_file)
                         test_loss = target_loss(sess, target_lstm, likelihood_data_loader)
-                        print("Groud-Truth:", test_loss)
+                        print("Groud-Truth:(和上面的test_loss越接近越好)", test_loss)
                 saver.save(sess, model_path + '/leakgan_pre')
         else:
+
                 print('Start pre-training discriminator...')
                 # Train 3 epoch on the generated data and do this for 50 times
                 for i in range(10):
+
                     for _ in range(5):
                         generate_samples(sess, leakgan, BATCH_SIZE, generated_num, negative_file,0)
                         generate_samples(sess, target_lstm, BATCH_SIZE, generated_num, positive_file,0)
@@ -268,7 +272,6 @@ def main():
                         if epoch % 5 == 0:
                             # Test
                             generate_samples(sess, leakgan, BATCH_SIZE, generated_num, eval_file,0)
-
                             likelihood_data_loader.create_batches(eval_file)
                             test_loss = target_loss(sess, target_lstm, likelihood_data_loader)
                             print('pre-train epoch ', epoch, 'test_loss ', test_loss)
@@ -276,10 +279,9 @@ def main():
                             log.write(buffer)
 
                             generate_samples(sess, target_lstm, BATCH_SIZE, generated_num, eval_file, 0)
-
                             likelihood_data_loader.create_batches(eval_file)
                             test_loss = target_loss(sess, target_lstm, likelihood_data_loader)
-                            print("Groud-Truth:", test_loss)
+                            print("Groud-Truth:(和上面的test_loss越接近越好)", test_loss)
                 saver.save(sess, model_path + '/leakgan_pre')
 
     gen_circle = 1
@@ -294,7 +296,7 @@ def main():
             for gi in range(gen_circle):
                 samples = leakgan.generate(sess,1.0,1)
                 rewards = get_reward(leakgan, discriminator,sess, samples, 4, dis_dropout_keep_prob)
-                feed = {leakgan.x: samples, leakgan.reward: rewards,leakgan.drop_out:1.0}
+                feed = {leakgan.x: samples, leakgan.reward: rewards, leakgan.drop_out:1.0}
                 _,_,g_loss,w_loss = sess.run([leakgan.manager_updates,
                                               leakgan.worker_updates,
                                               leakgan.goal_loss,
@@ -309,10 +311,11 @@ def main():
             buffer = 'epoch:\t' + str(total_batch) + '\tnll:\t' + str(test_loss) + '\n'
             print('total_batch: ', total_batch, 'test_loss: ', test_loss)
             log.write(buffer)
+
             generate_samples(sess, target_lstm, BATCH_SIZE, generated_num, eval_file, 0)
             likelihood_data_loader.create_batches(eval_file)
             test_loss = target_loss(sess, target_lstm, likelihood_data_loader)
-            print("Groud-Truth:" ,test_loss)
+            print("Groud-Truth:(和上面的test_loss越接近越好)" ,test_loss)
 
         # Train the discriminator
         for _ in range(5):

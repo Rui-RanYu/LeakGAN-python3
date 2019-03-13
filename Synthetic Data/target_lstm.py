@@ -68,22 +68,22 @@ class TARGET_LSTM(object):
             dtype=tf.float32, size=self.sequence_length,
             dynamic_size=False, infer_shape=True)
 
-        ta_emb_x = tensor_array_ops.TensorArray(
+        target_emb_x = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length)
-        ta_emb_x = ta_emb_x.unstack(self.processed_x)
+        target_emb_x = target_emb_x.unstack(self.processed_x)
 
         def _pretrain_recurrence(i, x_t, h_tm1, g_predictions):
             h_t = self.g_recurrent_unit(x_t, h_tm1)
             o_t = self.g_output_unit(h_t)
             g_predictions = g_predictions.write(i, tf.nn.softmax(o_t))  # batch x vocab_size
-            x_tp1 = ta_emb_x.read(i)
+            x_tp1 = target_emb_x.read(i)
             return i + 1, x_tp1, h_t, g_predictions
 
         _, _, _, self.g_predictions = control_flow_ops.while_loop(
             cond=lambda i, _1, _2, _3: i < self.sequence_length,
             body=_pretrain_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
-                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
+                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token), # 完全从零开始生成
                        self.h0,
                        g_predictions))
 
@@ -106,7 +106,7 @@ class TARGET_LSTM(object):
             ), 1
         )  # batch_size
 
-    def generate(self, session,a,b):
+    def generate(self, session,_1,_2):
         # h0 = np.random.normal(size=self.hidden_dim)
         outputs = session.run(self.gen_x)
         return outputs

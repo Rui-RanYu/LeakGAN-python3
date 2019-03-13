@@ -83,6 +83,7 @@ class LeakGAN(object):
 
         gen_o = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
                                                  dynamic_size=False, infer_shape=True)
+
         gen_x = tensor_array_ops.TensorArray(dtype=tf.int32,size=1,dynamic_size=True, infer_shape=True,clear_after_read = False)
 
         goal = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
@@ -113,9 +114,9 @@ class LeakGAN(object):
                           gen_real_goal_array,
                           gen_o_worker_array):
             ## padding sentence by -1
-            cur_sen = tf.cond(i > 0,lambda:tf.split(tf.concat([tf.transpose(gen_x.stack(), perm=[1, 0]),self.padding_array],1),[self.sequence_length,i],1)[0],lambda :self.padding_array)
+            current_sentence = tf.cond(i > 0,lambda:tf.split(tf.concat([tf.transpose(gen_x.stack(), perm=[1, 0]),self.padding_array],1),[self.sequence_length,i],1)[0],lambda :self.padding_array)
             with tf.variable_scope(self.scope):
-                feature = self.FeatureExtractor_unit(cur_sen,self.drop_out)
+                feature = self.FeatureExtractor_unit(current_sentence,self.drop_out)
             h_t_Worker = self.g_worker_recurrent_unit(x_t, h_tm1)  # hidden_memory_tuple
             o_t_Worker = self.g_worker_output_unit(h_t_Worker)  # batch x vocab , logits not prob
             o_t_Worker = tf.reshape(o_t_Worker,[self.batch_size,self.vocab_size,self.goal_size])
@@ -142,7 +143,7 @@ class LeakGAN(object):
                 tf.cond(i > 1, lambda: tf.cond(self.train > 0, lambda: self.tem, lambda: 1.5), lambda: 1.5) * x_logits))
             next_token = tf.cast(tf.reshape(tf.multinomial(log_prob, 1), [self.batch_size]), tf.int32)
             x_tp1 = tf.nn.embedding_lookup(self.g_embeddings, next_token)  # batch x emb_dim
-            with tf.control_dependencies([cur_sen]):
+            with tf.control_dependencies([current_sentence]):
                 gen_x = gen_x.write(i, next_token)  # indices, batch_size
             gen_o = gen_o.write(i, tf.reduce_sum(tf.multiply(tf.one_hot(next_token, self.vocab_size, 1.0, 0.0),
                                                              tf.nn.softmax(x_logits)), 1))  # [batch_size] , prob
@@ -163,7 +164,7 @@ class LeakGAN(object):
             cond=lambda i, _1, _2, _3, _4,_5,_6,_7,_8,_9,_10,_11: i < self.sequence_length,
             body=_g_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
-                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
+                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token), # 完全从零开始生成
                        self.h0_worker,
                        self.h0_manager,
                        gen_o,
@@ -177,6 +178,7 @@ class LeakGAN(object):
 
         self.gen_x = self.gen_x.stack()  # seq_length x batch_size # [?,64]
 
+        # 生成的最终结果
         self.gen_x = tf.transpose(self.gen_x, perm=[1, 0])  # batch_size x seq_length # [64,?]
 
         self.gen_real_goal_array = self.gen_real_goal_array.stack()  # seq_length x batch_size x goal
@@ -200,9 +202,9 @@ class LeakGAN(object):
         g_predictions = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length,
             dynamic_size=False, infer_shape=True)
-        ta_emb_x = tensor_array_ops.TensorArray(
+        target_emb_x = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length)
-        ta_emb_x = ta_emb_x.unstack(self.processed_x)
+        target_emb_x = target_emb_x.unstack(self.processed_x)
 
 
         def preTrain(i,
@@ -219,9 +221,9 @@ class LeakGAN(object):
                      all_sub_features,
                      all_sub_goals):
             ## padding sentence by -1
-            cur_sen = tf.split(tf.concat([tf.split(input_x,[i,self.sequence_length-i],1)[0],self.padding_array],1),[self.sequence_length,i],1)[0]  #padding sentence
+            current_sentence = tf.split(tf.concat([tf.split(input_x,[i,self.sequence_length-i],1)[0],self.padding_array],1),[self.sequence_length,i],1)[0]  #padding sentence
             with tf.variable_scope(self.scope):
-                feature = self.FeatureExtractor_unit(cur_sen,self.drop_out)
+                feature = self.FeatureExtractor_unit(current_sentence,self.drop_out)
             feature_array = feature_array.write(i,feature)
 
             real_goal_array = tf.cond(i>0, lambda: real_goal_array,
@@ -230,13 +232,13 @@ class LeakGAN(object):
             sub_goal = self.g_manager_output_unit(h_t_manager)
             sub_goal = tf.nn.l2_normalize(sub_goal, 1)
 
-            h_t_Worker = tf.cond(i>0,lambda :self.g_worker_recurrent_unit(x_t, h_tm1),
+            h_t_Worker = tf.cond(i>0,lambda : self.g_worker_recurrent_unit(x_t, h_tm1),
                                      lambda : h_tm1)# hidden_memory_tuple
             o_t_Worker = self.g_worker_output_unit(h_t_Worker)  # batch x vocab , logits not prob
             o_t_Worker = tf.reshape(o_t_Worker, [self.batch_size, self.vocab_size, self.goal_size])
 
-            real_sub_goal =tf.cond(i>0,lambda :tf.add(last_goal, sub_goal),
-                                       lambda :real_goal)
+            real_sub_goal =tf.cond(i>0,lambda : tf.add(last_goal, sub_goal),
+                                       lambda : real_goal)
             all_sub_goals = tf.cond(i > 0,lambda: all_sub_goals.write(i-1, real_goal),
                                         lambda: all_sub_goals)
 
@@ -263,7 +265,7 @@ class LeakGAN(object):
                                                                         lambda :tf.cond(i>0,lambda :real_goal_array.write(tf.cast(i/step_size,tf.int32), real_sub_goal),
                                                                                             lambda :real_goal_array),
                                                                         lambda :real_goal_array))
-            x_tp1 = tf.cond(i>0,lambda :ta_emb_x.read(i-1),
+            x_tp1 = tf.cond(i>0,lambda :target_emb_x.read(i-1),
                                 lambda :x_t)
 
             return i+1,\
@@ -284,10 +286,10 @@ class LeakGAN(object):
             cond=lambda i, _1, _2, _3, _4, _5, _6,_7,_8,_9,_10,_11,_12 : i < self.sequence_length+1,
             body=preTrain,
             loop_vars=(tf.constant(0, dtype=tf.int32),
-                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token),
+                       tf.nn.embedding_lookup(self.g_embeddings, self.start_token), #作为从零开始生成的输入
                        g_predictions,
                        self.h0_worker,
-                       self.x,
+                       self.x, # pre-train所以肯定有真实文本输入，作为target
                        self.h0_manager,
                        tf.zeros([self.batch_size, self.goal_out_size]),
                        self.goal_init,
@@ -313,7 +315,6 @@ class LeakGAN(object):
 
             self.pretrain_manager_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_goal_loss, self.manager_params), self.grad_clip)
             self.pretrain_manager_updates = pretrain_manager_opt.apply_gradients(list(zip(self.pretrain_manager_grad, self.manager_params)),global_step=global_step_pre)
-        # self.real_goal_array = self.real_goal_array.stack()
 
         self.g_predictions = tf.transpose(self.g_predictions.stack(), perm=[1, 0, 2])  # batch_size x seq_length x vocab_size
         self.cross_entropy = tf.reduce_sum(self.g_predictions * tf.log(tf.clip_by_value(self.g_predictions, 1e-20, 1.0))) / (
@@ -332,7 +333,9 @@ class LeakGAN(object):
             self.pretrain_worker_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_worker_loss, self.worker_params), self.grad_clip)
             self.pretrain_worker_updates = pretrain_worker_opt.apply_gradients(list(zip(self.pretrain_worker_grad, self.worker_params)),global_step=global_step_pre)
 
-        self.goal_loss = -tf.reduce_sum(tf.multiply(self.reward,1-tf.losses.cosine_distance(tf.nn.l2_normalize(self.sub_feature,2), tf.nn.l2_normalize(self.real_goal_array,2), 2)
+        self.goal_loss = -tf.reduce_sum(tf.multiply(self.reward,
+                                                    1-tf.losses.cosine_distance(tf.nn.l2_normalize(self.sub_feature, 2),
+                                                                                tf.nn.l2_normalize(self.real_goal_array, 2), 2)
                                                  )) / (self.sequence_length * self.batch_size / self.step_size)
 
         with tf.name_scope("Manager_update"):
@@ -345,13 +348,13 @@ class LeakGAN(object):
 
 
         self.all_sub_features = self.all_sub_features.stack()
-        self.all_sub_features = tf.transpose(self.all_sub_features, perm=[1, 0, 2])
+        self.all_sub_features = tf.transpose(self.all_sub_features, perm=[1, 0, 2]) # [batch_size,?,1880]
 
         self.all_sub_goals = self.all_sub_goals.stack()
-        self.all_sub_goals = tf.transpose(self.all_sub_goals, perm=[1, 0, 2])
-        # self.all_sub_features = tf.nn.l2_normalize(self.all_sub_features, 2)
-        self.Worker_Reward = 1-tf.losses.cosine_distance(tf.nn.l2_normalize(self.all_sub_features,2), tf.nn.l2_normalize(self.all_sub_goals,2), 2)
-        # print self.Worker_Reward.shape
+        self.all_sub_goals = tf.transpose(self.all_sub_goals, perm=[1, 0, 2]) # [batch_size,?,1880]
+
+        self.Worker_Reward = 1-tf.losses.cosine_distance(tf.nn.l2_normalize(self.all_sub_features, 2),
+                                                         tf.nn.l2_normalize(self.all_sub_goals, 2), 2)
         self.worker_loss = -tf.reduce_sum(
             tf.multiply(self.Worker_Reward , tf.one_hot(tf.to_int32(tf.reshape(self.x, [-1])), self.vocab_size, 1.0, 0.0) * tf.log(
                 tf.clip_by_value(tf.reshape(self.g_predictions, [-1, self.vocab_size]), 1e-20, 1.0))
@@ -365,18 +368,20 @@ class LeakGAN(object):
             self.worker_updates = worker_opt.apply_gradients(
                 list(zip(self.worker_grad, self.worker_params)),global_step=global_step_adv)
 
+    # rollout是蒙特卡洛的一个东西，好像就是随机
     def rollout(self,input_x,given_num):
         with tf.device("/cpu:0"):
             processed_x = tf.transpose(tf.nn.embedding_lookup(self.g_embeddings,input_x),perm=[1, 0, 2])  # seq_length x batch_size x emb_dim
         ta_emb_x = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length)
         ta_emb_x = ta_emb_x.unstack(processed_x)
 
-        #Next is rollout
+        # Next is rollout
         gen_for_reward = tensor_array_ops.TensorArray(dtype=tf.int32, size=1, dynamic_size=True, infer_shape=True,clear_after_read=False)
         ta_x = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length)
         ta_x = ta_x.unstack(tf.transpose(input_x, perm=[1, 0]))
 
         # When current index i < given_num, use the provided tokens as the input at each time step
+        # 这个方法是rollout方法里的
         def _g_recurrence_1(i, x_t,input_x,gen_x,h_tm1,h_tm1_manager,last_goal,real_goal,give_num):
 
             cur_sen = tf.split(tf.concat([tf.split(input_x, [i, self.sequence_length - i], 1)[0], self.padding_array], 1),[self.sequence_length, i], 1)[0]
@@ -404,6 +409,7 @@ class LeakGAN(object):
                    tf.cond(((i) % self.step_size) > 0, lambda: real_goal, lambda: real_sub_goal), give_num
 
         # When current index i >= given_num, start roll-out, use the output as time step t as the input at time step t+1
+        # 这个方法是rollout方法里的
         def _g_recurrence_2(i, x_t,gen_x,h_tm1,h_tm1_manager,last_goal,real_goal):
             # with tf.device('/cpu:0'):
             cur_sen = tf.cond(i > 0,lambda:tf.split(tf.concat([tf.transpose(gen_x.stack(), perm=[1, 0]),self.padding_array],1),[self.sequence_length,i-1],1)[0],lambda :self.padding_array)
@@ -478,7 +484,8 @@ class LeakGAN(object):
                             self.pretrain_worker_loss,
                             self.pretrain_manager_updates,
                             self.pretrain_goal_loss],
-                           feed_dict={self.x: x,self.drop_out:dropout_keep_prob})
+                           feed_dict={self.x: x, # [batch_size,seq_len]
+                                      self.drop_out:dropout_keep_prob})
         return outputs
 
     def generate(self, sess,dropout_keep_prob,train = 1):
