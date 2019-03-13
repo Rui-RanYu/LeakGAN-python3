@@ -300,7 +300,7 @@ def main():
                                               leakgan.worker_updates,
                                               leakgan.goal_loss,
                                               leakgan.worker_loss], feed_dict=feed)
-                print('batch_index and manager worker loss: ', total_batch, "  ", g_loss, "  ", w_loss)
+                print('batch_index manager worker loss: ', total_batch, "  ", g_loss, "  ", w_loss)
 
         # Test
         if total_batch % 5 == 0 or total_batch == TOTAL_BATCH - 1:
