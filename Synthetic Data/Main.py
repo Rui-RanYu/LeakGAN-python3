@@ -238,7 +238,6 @@ def main():
                 print('Start pre-training discriminator...')
                 # Train 3 epoch on the generated data and do this for 50 times
                 for i in range(10):
-
                     for _ in range(5):
                         generate_samples(sess, leakgan, BATCH_SIZE, generated_num, negative_file,0)
                         generate_samples(sess, target_lstm, BATCH_SIZE, generated_num, positive_file,0)
@@ -291,8 +290,8 @@ def main():
     log.write('adversarial training...\n')
     for total_batch in range(TOTAL_BATCH):
         # Train the generator for one step
+        print("train G")
         for it in range(1):
-
             for gi in range(gen_circle):
                 samples = leakgan.generate(sess,1.0,1)
                 rewards = get_reward(leakgan, discriminator,sess, samples, 4, dis_dropout_keep_prob)
@@ -301,7 +300,7 @@ def main():
                                               leakgan.worker_updates,
                                               leakgan.goal_loss,
                                               leakgan.worker_loss], feed_dict=feed)
-                print('total_batch: ', total_batch, "  ", g_loss, "  ", w_loss)
+                print('batch_index and manager worker loss: ', total_batch, "  ", g_loss, "  ", w_loss)
 
         # Test
         if total_batch % 5 == 0 or total_batch == TOTAL_BATCH - 1:
@@ -318,11 +317,12 @@ def main():
             print("Groud-Truth:(和上面的test_loss越接近越好)" ,test_loss)
 
         # Train the discriminator
+        D_loss_sum = 0
+        print("train D")
         for _ in range(5):
             generate_samples(sess, leakgan, BATCH_SIZE, generated_num, negative_file,0)
             generate_samples(sess, target_lstm, BATCH_SIZE, generated_num, positive_file,0)
-            dis_data_loader.load_train_data(positive_file, negative_file)
-
+            dis_data_loader.load_train_data(positive_file, negative_file) # 混合数据feed
             for _ in range(3):
                 dis_data_loader.reset_pointer()
                 for it in range(dis_data_loader.num_batch):
@@ -333,8 +333,9 @@ def main():
                         discriminator.dropout_keep_prob: dis_dropout_keep_prob
                     }
                     D_loss, _ = sess.run([discriminator.D_loss, discriminator.D_train_op], feed)
-                    # print 'D_loss ', D_loss
+                    D_loss_sum += D_loss
             leakgan.update_feature_function(discriminator)
+        print('D_loss ', D_loss_sum)
     log.close()
 
 
